@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <title>Museum Ovartaci</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; overflow: hidden; }
+   /* #coord-box {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: white;
+      padding: 10px;
+      border: 1px solid #aaa;
+      z-index: 1000;
+      font-family: 'Times New Roman', Times, serif;
+    }*/
+    .play-button { width: 50px; height: 50px; margin: 5px; }
+    .pause-button { width: 55px; height: 50px; margin: 5px; }
+    .fade-in {
+      opacity: 0;
+      animation: fadeIn 0.4s ease-in forwards;
+    }
+    @keyframes fadeIn {
+      to {
+        opacity: 1;
+      }
+    }
+
+.main-image {
+  width: 100%;
+  max-width: 500px;
+  height: 300px;             /* Set a fixed height */
+  object-fit: cover;         /* Ensures consistent cropping */
+  display: block;
+  margin: 5px 0;
+}
+
+
+.icon-button {
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.leaflet-popup-content {
+  transform: scale(1) !important;
+  transform-origin: top left !important;
+}
+
+.leaflet-popup-content {
+  max-width: 200px;
+  width: 200px;
+  min-height: 200px;
+  overflow: auto;
+}
+
+
+#toggle-markers-btn {
+  width: 60px;
+  height: 60px;
+  padding: 10px;
+}
+
+.leaflet-popup-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Prevent the black marker popups from inheriting the global fixed height */
+.leaflet-popup-content-wrapper.black-popup-wrapper {
+  width: auto !important;
+  max-width: fit-content !important;
+  height: auto !important;
+  max-height: none !important;
+  padding: 4px !important;
+  overflow: visible !important;
+}
+
+/* Override global leaflet-popup-content height */
+.black-popup-wrapper .leaflet-popup-content {
+  margin: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Inner popup styles */
+.black-popup {
+  padding: 4px !important;
+  margin: 0 !important;
+  height: auto !important;
+  width: auto !important;
+}
+
+.black-popup .popup-caption {
+  padding: 4px !important;
+  margin: 0 !important;
+  gap: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: auto !important;
+}
+
+.black-popup .icon-button {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  margin: 0;
+}
+</style>
+</head>
+<body>
+
+  <button id="toggle-markers-btn" style="
+  position: absolute;
+  top: 50px;
+  left: 10px;
+  z-index: 100;
+  padding: 8px 8px;
+">
+  <img id="marker-toggle-img" src="marker-no.png" width="50" height="50">
+</button>
+
+
+<div id="coord-box">Click on map to get X, Y %</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+  
+
+// Add section filtering function
+function showOnlySection(sectionName) {
+  if (sectionName === "Alle markeringer") {
+    // Show all markers
+    markers.forEach(marker => {
+      if (!map.hasLayer(marker)) {
+        map.addLayer(marker);
+      }
+    });
+  } else {
+    markers.forEach(marker => {
+      if (marker._section === sectionName) {
+        if (!map.hasLayer(marker)) {
+          map.addLayer(marker);
+        }
+      } else {
+        if (map.hasLayer(marker)) {
+          map.removeLayer(marker);
+        }
+      }
+    });
+  }
+}
+
+
+  const imageWidth = 2500;
+  const imageHeight = 1500;
+
+  const map = L.map('map', {
+    crs: L.CRS.Simple,
+    minZoom: -2,
+    maxZoom: 4,
+    zoomSnap: 0.1,
+    zoomDelta: 0.1,
+    zoomControl: false
+  });
+
+const bounds = [[0, 0], [imageHeight, imageWidth]];
+L.imageOverlay('Plan.png', bounds).addTo(map);
+
+const paddingTop = 150; // Adjust this as needed
+const expandedBounds = [[-paddingTop, 0], [imageHeight, imageWidth]];
+
+map.fitBounds(bounds);
+
+
+let currentAudio = null;
+let currentAudioUrl = null;
+
+function playAudio(url) {
+  if (currentAudio && currentAudioUrl === url) {
+    // Same audio file
+    if (currentAudio.paused) {
+      currentAudio.play();  // Resume from paused position
+    }
+    // If already playing, do nothing
+  } else {
+    // Different file or no audio loaded yet
+    if (currentAudio) {
+      currentAudio.pause();
+      currentAudio.currentTime = 0;  // Reset previous audio
+    }
+    currentAudio = new Audio(url);
+    currentAudioUrl = url;
+    currentAudio.play();
+  }
+}
+
+function pauseAudio() {
+  if (currentAudio) {
+    currentAudio.pause();
+  }
+}
+
+function stopAudio() {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.currentTime = 0; // Reset to start
+  }
+}
+
+
+
+
+  const markers = [];
+
+
+  const greenMarkers = [
+   { xPercent: 6.86, yPercent: 47.90, title: "Anslag", section: "Anslag"},
+   { xPercent: 20.65, yPercent: 83.04, title: "Normalitet", section: "Normalitet"},
+   { xPercent: 33.59, yPercent: 76.61, title: "Risskov", section: "Risskov"},
+   { xPercent: 39.99, yPercent: 71.33, title: "Modsætninger", section: "Modsætninger"},
+   { xPercent: 64.12, yPercent: 48.19, title: "Gemt og glemt", section: "Gemt og glemt"},
+   { xPercent: 86.40, yPercent: 49.62, title: "Fantasi drømme visioner 01", section: "Fantasi drømme visioner 01"},
+   { xPercent: 83.06, yPercent: 26.76, title: "Fantasi drømme visioner 02", section: "Fantasi drømme visioner 02"},
+   { xPercent: 56.99, yPercent: 41.76, title: "Identitet", section: "Identitet"},
+   { xPercent: 29.91, yPercent: 11.77, title: "Afslutning", section: "Afslutning"},
+    ];
+
+   const locations = [
+    { xPercent: 28.96, yPercent: 51.84, title: "HVORDAN FORSTÅR <br> VI OS SELV ?", audio: "Lydfiler/Forstår.m4a", section: "Normalitet", image: "Billeder/Forstår.jpg" },
+    { xPercent: 38.00, yPercent: 55.68, title: "ER DU NORMAL?", audio: "Lydfiler/Normal.m4a", section: "Normalitet", image: "Billeder/Normal.jpg" },
+    { xPercent: 45.50, yPercent: 69.80, title: "ET LIV MED MODSÆTNINGER", audio: "Lydfiler/Modsætninger.m4a", section: "Modsætninger", image: "Billeder/Modsætninger.jpg"},
+    { xPercent: 67.93, yPercent: 72.24, title: "GEMT OG GLEMT", audio: "Lydfiler/Gemt.m4a", section: "Gemt og glemt", image: "Billeder/Gemt.jpg" },
+    { xPercent: 71.99, yPercent: 14.40, title: "FANTASIENS KRAFT", audio: "Lydfiler/Fantasi.m4a", section: "Fantasi drømme visioner 02", image: "Billeder/Fantasi.jpg" },
+    { xPercent: 46.21, yPercent: 30.11, title: "HVEM ER VI?", audio: "Lydfiler/Hvem.m4a", section: "Identitet", image: "Billeder/Hvem.jpg"},
+    { xPercent: 39.18, yPercent: 24.25, title: "AMPUTATIONEN", audio: "Lydfiler/Amputationen.m4a", section: "Identitet", image: "Billeder/Amputationen.jpg"},
+    { xPercent: 36.10, yPercent: 3.52, title: "Skab eller rejs", audio: "Lydfiler/Skab.m4a", section: "Identitet", image: "Billeder/Skab.jpg"},
+    { xPercent: 19.46, yPercent: 47.13, title: "TILTALEFORM", audio: "Lydfiler/Tiltaleform.m4a", section: "Normalitet", image: "Billeder/Tiltaleform.jpg"},
+    { xPercent: 21.61, yPercent: 62.14, title: "FØR REJSEN", audio: "Lydfiler/Før.m4a", section: "Normalitet", image: "Billeder/Før.jpg"},
+    { xPercent: 27.35, yPercent: 69.58, title: "UNDER REJSEN", audio: "Lydfiler/Under.m4a", section: "Normalitet", image: "Billeder/Under.jpg"},
+    { xPercent: 29.67, yPercent: 71.15, title: "EFTER REJSEN", audio: "Lydfiler/Efter.m4a", section: "Normalitet", image: "Billeder/Efter.jpg"},
+    { xPercent: 39.01, yPercent: 51.27, title: "ET LIV EFTER DØDEN", audio: "Lydfiler/Liv.m4a", section: "Modsætninger", image: "Billeder/Liv.jpg"},
+    { xPercent: 48.52, yPercent: 46.53, title: "KUNSTEN AT RYGE", audio: "Lydfiler/Ryge.m4a", section: "Modsætninger", image: "Billeder/Ryge.jpg"},
+    { xPercent: 69.11, yPercent: 53.99, title: "BETYDNINGEN AF <br> HÅNDENS ARBEJDE", audio: "Lydfiler/Håndens.m4a", section: "Gemt og glemt", image: "Billeder/Håndens.jpg"},
+    { xPercent: 61.99, yPercent: 83.30, title: "MENINGSFYLDT <br> BESKÆFTIGELSE", audio: "Lydfiler/Meningsfyldt.m4a", section: "Risskov", image: "Billeder/Meningsfyldt.jpg"},
+    { xPercent: 81.36, yPercent: 85.46, title: "INDDRAGELSE AF FRIHED", audio: "Lydfiler/Inddragelse.m4a", section: "Risskov", image: "Billeder/Inddragelse.jpg"},
+    { xPercent: 83.94, yPercent: 58.85, title: "HÆNGEDUKKER", audio: "Lydfiler/Hængedukker.m4a", section: "Gemt og glemt", image: "Billeder/Hængedukker.jpg"},
+    { xPercent: 81.97, yPercent: 60.57, title: "Sinhuset", audio: "Lydfiler/Sinhuhest.m4a", section: "Gemt og glemt", image: "Billeder/sinhuhest.jpg"},
+    { xPercent: 87.29, yPercent: 86.59, title: "FRIHED", audio: "Lydfiler/Frihed.m4a", section: "Fantasi drømme visioner 01", image: "Billeder/Frihed.jpg"},
+    { xPercent: 78.11, yPercent: 27.11, title: "EN FANDENS FANTAST", audio: "Lydfiler/Fantast.m4a", section: "Fantasi drømme visioner 02", image: "Billeder/Fantast.jpg"},
+    { xPercent: 69.54, yPercent: 44.27, title: "MEKANISK HØ", audio: "Lydfiler/Mekanisk.m4a", section: "Fantasi drømme visioner 02", image: "Billeder/Mekanisk.jpg"},
+    { xPercent: 59.42, yPercent: 9.09, title: "ÆSTETIK OG <br> SPROGETS MELODI", audio: "Lydfiler/Æstetisk.m4a", section: "Fantasi drømme visioner 02", image: "Billeder/Æstetik.jpg"},
+    { xPercent: 59.16, yPercent: 24.25, title: "KOSMOS-SKOLE", audio: "Lydfiler/Kosmos.m4a", section: "Fantasi drømme visioner 02", image: "Billeder/Kosmos.jpg"},
+    { xPercent: 57.96, yPercent: 23.39, title: "ALT HAR EN SJÆL", audio: "Lydfiler/Sjæl.m4a", section: "Identitet", image: "Billeder/Sjæl.jpg"},
+    { xPercent: 49.90, yPercent: 43.98, title: "KROP OG HYLSTER", audio: "Lydfiler/Krop.m4a", section: "Identitet", image: "Billeder/Krop.jpg"},
+    { xPercent: 39.18, yPercent: 40.41, title: " BEFRI DIG", audio: "Lydfiler/Befri.m4a", section: "Identitet", image: "Billeder/Befri.jpg"},
+    { xPercent: 57.28, yPercent: 7.09, title: "ER DU DIT NAVN?", audio: "Lydfiler/Navn.m4a", section: "Identitet", image: "Billeder/Navn.jpg"},
+    { xPercent: 32.24, yPercent: 83.30, title: "HARALD SELMER <br> 1814-1879", audio: "Lydfiler/Harald.m4a", section: "Risskov", image: "Billeder/Harald.jpg"},
+    { xPercent: 36.95, yPercent: 21.96, title: "PATRICK LARSEN <br> 1951-1986", audio: "Lydfiler/Patrick.m4a", section: "Identitet", image: "Billeder/Patrick.jpg"},
+    { xPercent: 34.04, yPercent: 44.13, title: "JETTE HANSEN <br> 1946-", audio: "Lydfiler/Jette.m4a", section: "Identitet", image: "Billeder/Jette.jpg"},
+    { xPercent: 28.50, yPercent: 43.59, title: "FRITS ALBERTS <br> FLORENTINUS STRAND <br> 1853-1936", audio: "Lydfiler/Frits.m4a", section: "Identitet", image: "Billeder/Frits.jpg"},
+    { xPercent: 22.89, yPercent: 44.27, title: "OLE NORGE <br> 1951-2012", audio: "Lydfiler/Ole.m4a", section: "Identitet", image: "Billeder/Ole.jpg"},
+    { xPercent: 19.89, yPercent: 35.40, title: "MARIE HEIBERG <br> 1942-2008", audio: "Lydfiler/Marie.m4a", section: "Identitet", image: "Billeder/Marie.jpg"},
+    { xPercent: 32.32, yPercent: 7.38, title: "FORVANDLINGEN <br> ER DEN ENESTE KONSTANT", audio: "Lydfiler/Forvandlingen.m4a", section: "Identitet", image: "Billeder/Forvandlingen.jpg"},
+    { xPercent: 75.37, yPercent: 83.16, title: "Tvangsmidler", audio: "Lydfiler/Tvangsmidler.m4a", section: "Risskov", image: "Billeder/Tvangsmidler.jpg"},
+    { xPercent: 78.88, yPercent: 83.73, title: "Elektrochok apparat", audio: "Lydfiler/Elektrochok.m4a", section: "Risskov", image: "Billeder/Elektrochok.jpg"},
+    { xPercent: 41.51, yPercent: 6.91, title: "Små skulpturer", audio: "Lydfiler/Skulpturer1.m4a", section: "Identitet", image: "Billeder/Små2.jpg"},
+    { xPercent: 38.25, yPercent: 2.63, title: "Lulu", audio: "Lydfiler/Lulu.m4a", section: "Identitet", image: "Billeder/Lulu.jpg"},
+    { xPercent: 33.79, yPercent: 1.77, title: "Pupparpasta", audio: "Lydfiler/Pupparpasta.m4a", section: "Identitet", image: "Billeder/Pupparpasta.jpg"},
+    { xPercent: 70.66, yPercent: 33.05, title: "Lyden af maskine", audio: "Lydfiler/Maskine.m4a", section: "Fantasi drømme visioner 02", image: "Billeder/Lyden.jpg"},
+    { xPercent: 74.35, yPercent: 6.06, title: "Små skulpturer", audio: "Lydfiler/Skulpturer2.m4a", section: "Fantasi drømme visioner 02", image: "Billeder/Små1.jpg"},
+    { xPercent: 6.00, yPercent: 55.04, title: "En fandens fantast", audio: "Lydfiler/Fandens.m4a", section: "Anslag", image: "Billeder/Fandens.jpg"},
+    { xPercent: 85.84, yPercent: 62.76, title: "Citater", audio: "Lydfiler/Citat1.m4a", section: "Fantasi drømme visioner 01", image: "Billeder/Citat1.jpg"},
+    { xPercent: 85.33, yPercent: 69.90, title: "Citater", audio: "Lydfiler/Citat2.m4a", section: "Fantasi drømme visioner 01", image: "Billeder/Citat2.jpg"},
+    { xPercent: 85.07, yPercent: 36.76, title: "Nu må du lave en maskine", audio: "Lydfiler/Maskin.m4a", section: "Fantasi drømme visioner 02", image: "Billeder/maskine.jpg"},
+    { xPercent: 95.87, yPercent: 14.91, title: "Stole", audio: "Lydfiler/Stole.m4a", section: "Fantasi drømme visioner 02", image: "Billeder/Stole.jpg"},
+    { xPercent: 84.04, yPercent: 30.19, title: "Jeg har været", audio: "Lydfiler/Pipfugl.m4a", section: "Fantasi drømme visioner 02",image: "Billeder/Pipfugl.jpg"},
+    { xPercent: 80.70, yPercent: 44.33, title: "Og så svor jeg", audio: "Lydfiler/Svor.m4a", section: "Fantasi drømme visioner 02", image: "Billeder/Svor.jpg"},
+    { xPercent: 6.43, yPercent: 16.34, title: "Særudstilling og museumshave", audio: "Lydfiler/S&M.m4a", section: "Anslag",image: "Billeder/Særudstilling&Have.jpg"},
+    { xPercent: 18.01, yPercent: 30.19, title: "Ovartaci et liv", audio: "Lydfiler/Ovartaci.m4a", section: "Anslag",image: "Billeder/Ovartaci.jpg"},
+    { xPercent: 38.42, yPercent: 64.90, title: "Ovartaci fortæller", audio: "Lydfiler/Fortæller1.m4a", section: "Modsætninger", image: "Billeder/Fortæller1.jpg"},
+    { xPercent: 46.22, yPercent: 23.62, title: "Ovartaci fortæller", audio: "Lydfiler/Fortæller2.m4a", section: "Identitet", image: "Billeder/Fortæller2.jpg"},
+    { xPercent: 5.92, yPercent: 79.32, title: "Særudstilling", audio: "Lydfiler/Særudstilling.m4a", section: "Anslag", image: "Billeder/Særudstilling.jpg"},
+    { xPercent: 78.98, yPercent: 60.76, title: "Malerkasse og malergrej", audio: "Lydfiler/Malerkasse.m4a", section: "Gemt og glemt", image: "Billeder/Malerkasse.jpg"},
+    
+  ];
+
+const blackMarkers = [
+  {xPercent: 10.45, yPercent: 62.02, title: "Anslag", audio: "Lydfiler/Anslag.m4a", section: "Anslag"},
+  {xPercent: 25.50, yPercent: 61.79, title: "Normalitet", audio: "Lydfiler/Normalitet.m4a", section: "Normalitet"},
+  {xPercent: 49.34, yPercent: 79.19, title: "Risskov", audio: "Lydfiler/Risskov.m4a", section: "Risskov"},
+  {xPercent: 53.66, yPercent: 49.49, title: "Modsætninger", audio: "Lydfiler/Modsætninger2.m4a", section: "Modsætninger"},
+  {xPercent: 73.86, yPercent: 52.97, title: "Gemt og glemt", audio: "Lydfiler/Gemt2.m4a", section: "Gemt og glemt"},
+  {xPercent: 89.89, yPercent: 72.23, title: "Fantasi drømme visioner 01", audio: "Lydfiler/Fantasi1.m4a", section: "Fantasi drømme visioner 01"},
+  {xPercent: 63.97, yPercent: 22.81, title: "Fantasi drømme visioner 02", audio: "Lydfiler/Fantasi2.m4a", section: "Fantasi drømme visioner 02"},
+  {xPercent: 28.99, yPercent: 30.70, title: "Identitet", audio: "Lydfiler/Identitet.m4a", section: "Identitet"},
+  {xPercent: 24.67, yPercent: 9.82, title: "Afslutning", audio: "Lydfiler/Afslutning.m4a", section: "Afslutning"},
+  {xPercent: 17.15, yPercent: 97.31, title: "Adgang til særudstilling", audio: "Lydfiler/Adgang.m4a", section: "Anslag"}
+];
+
+//Hjul 1
+  const slideshowMarkers = [
+    {
+      xPercent: 57.36,
+      yPercent: 4.66,
+      type: 'wheel',
+      title: "Hjul",
+      section: "Identitet",
+      slides: [
+        { image: 'Billeder/Kender.jpg', caption: 'Kender du dig selv?', audio: 'Lydfiler/Kender.m4a' },
+        { image: 'Billeder/Skiller.jpg', caption: 'Hvordan skiller du dig ud?', audio: 'Lydfiler/Skiller.m4a' },
+        { image: 'Billeder/Hemmelighed.jpg', caption: 'Har du en hemmelighed?', audio: 'Lydfiler/Hemmelighed.m4a' },
+        { image: 'Billeder/Hænder.jpg', caption: 'Er du i gode hænder?', audio: 'Lydfiler/Hænder.m4a' },
+        { image: 'Billeder/Hedder.jpg', caption: 'Hvad hedder du?', audio: 'Lydfiler/Hedder.m4a' },
+        { image: 'Billeder/Stammer.jpg', caption: 'Hvor stammer du fra?', audio: 'Lydfiler/Stammer.m4a' }
+      ]
+    },
+  
+    //Hjul 2
+    {
+      xPercent: 57.26,
+      yPercent: 27.68,
+      type: 'wheel',
+      title: "Hjul",
+      section: "Identitet",
+      slides: [
+        { image: 'Billeder/Kvinden.jpg', caption: 'Kvinden er guddommelig.', audio: 'Lydfiler/Guddommelig.m4a' },
+        { image: 'Billeder/Sjælen.jpg', caption: 'Sjælen forlader legemet, når vi dør.', audio: 'Lydfiler/Legemet.m4a' },
+        { image: 'Billeder/Døden.jpg', caption: 'Døden er overgangen til noget nyt.', audio: 'Lydfiler/Døden,m4a' },
+        { image: 'Billeder/Fri.jpg', caption: 'Hvornår er du fri?', audio: 'Lydfiler/Fri.m4a' },
+        { image: 'Billeder/Kigger.jpg', caption: 'Kigger huse og træer tilbage på dig?', audio: 'Lydfiler/Besjælet.m4a' },
+        { image: 'Billeder/endestation.jpg', caption: 'Hvor er sjælens endestation?', audio: 'Lydfiler/Endestation.m4a' }
+      ]
+    },
+
+    //Hjul 3
+    {
+      xPercent: 43.81,
+      yPercent: 42.84,
+      type: 'wheel',
+      title: "Hjul",
+      section: "Identitet",
+      slides: [
+        { image: 'Billeder/Optræde.jpg', caption: 'Nogle kan godt lide at optræde andre kan ikke', audio: 'Lydfiler/Optræde.m4a' },
+        { image: 'Billeder/Iscenesatte.jpg', caption: 'Kroppen er altid iscenesatte', audio: 'Lydfiler/Kroppe.m4a' },
+        { image: 'Billeder/Roller.jpg', caption: 'Vi har ofte bestemte roller blandt familie og venner', audio: 'Lydfiler/Roller.m4a' },
+        { image: 'Billeder/Kontrol.jpg', caption: 'Hvad vil det sige at have kontrol over sin krop?', audio: 'Lydfiler/Kontrol.m4a' },
+        { image: 'Billeder/Balance.jpg', caption: 'Hvornår er kroppen i balance?', audio: 'Lydfiler/Balance.m4a' },
+        { image: 'Billeder/Kærlighed.jpg', caption: 'Kan kærligheden trækkes i en automat?', audio: 'Lydfiler/Automat.m4a' }
+      ]
+    },
+
+    //Touchscreen
+    {
+      xPercent: 37.47,
+      yPercent: 51.57,
+      type: 'touchscreen',
+      title: "Touchskærm",
+      section: "Normalitet",
+      slides: [
+        { image: 'Billeder/Homoseksuel.jpg', caption: 'HOMOSEKSUEL', audio: 'Lydfiler/Homoseksuel.m4a' },
+        { image: 'Billeder/Buddhisme.jpg', caption: 'BUDDHISME', audio: 'Lydfiler/Buddhisme.m4a' },
+        { image: 'Billeder/Yoga.jpg', caption: 'YOGA', audio: 'Lydfiler/Yoga.m4a' },
+        { image: 'Billeder/Vegetar.jpg', caption: 'VEGETAR', audio: 'Lydfiler/Vegetar.m4a' },
+        { image: 'Billeder/Køn.jpg', caption: 'KØN', audio: 'Lydfiler/Køn.m4a' },
+        { image: 'Billeder/Alkohol.jpg', caption: 'ALKOHOL', audio: 'Lydfiler/Alkohol.m4a' },
+        { image: 'Billeder/Ægteskab.jpg', caption: 'FØDT UDENFOR ÆGTESKAB', audio: 'Lydfiler/Ægteskab.m4a' },
+        { image: 'Billeder/Feminist.jpg', caption: 'FEMINIST', audio: 'Lydfiler/Feminist.m4a' },
+        { image: 'Billeder/Bukser.jpg', caption: 'BUKSER', audio: 'Lydfiler/Bukser.m4a' }
+      ]
+    },
+
+     //Små vinduer ved Gemt og glemt den ene side
+    {
+      xPercent: 67.82,
+      yPercent: 51.13,
+      type: 'Small Windows',
+      title: "Små vinduer",
+      section: "Gemt og glemt",
+      slides: [
+        { image: 'Billeder/Bolette.jpg', caption: 'Bolette', audio: 'Lydfiler/Bolette.m4a' },
+        { image: 'Billeder/Saltkar.jpg', caption: 'Saltkar', audio: 'Lydfiler/Saltkar.m4a' },
+        { image: 'Billeder/Skib.jpg', caption: '"Skib"', audio: 'Lydfiler/Skib.m4a' },
+        { image: 'Billeder/Dukker.jpg', caption: 'Dukker', audio: 'Lydfiler/Dukker.m4a' },
+        { image: 'Billeder/Bordkort.jpg', caption: 'Bordkort med akvarelvignetter og digte', audio: 'Lydfiler/Bordkort.m4a' },
+        { image: 'Billeder/Sengestue.jpg', caption: 'Sengestuen og operationsstue. Lille journal med <br> påskriften SVIMMELSK', audio: 'Lydfiler/Sengestuen.m4a' },
+        { image: 'Billeder/Pude.jpg', caption: 'Pude', audio: 'Lydfiler/wheel2-slide1.m4a' }
+      ]
+    },
+
+    //Små vinduer ved Gemt og glemt den anden side
+        {
+      xPercent: 70.22,
+      yPercent: 69.00,
+      type: 'Small Windows',
+      title: "Små vinduer",
+      section: "Gemt og glemt",
+      slides: [
+        { image: 'Billeder/Pose.jpg', caption: 'Broderet pose med løbegang', audio: 'Lydfiler/Broderet.m4a'},
+        { image: 'Billeder/Saltkar.jpg', caption: 'Skål', audio: 'Lydfiler/Skål.m4a' },
+        { image: 'Billeder/Trilafonbil.jpg', caption: 'Trilafonbil', audio: 'Lydfiler/Trilafonbil.m4a' },
+        { image: 'Billeder/Flaske.jpg', caption: 'Flaske med væv i træ', audio: 'Lydfiler/Flaske.m4a' },
+        { image: 'Billeder/Fuglebur.jpg', caption: 'Fuglebur', audio: 'Lydfiler/Fuglebur.m4a' },
+        { image: 'Billeder/Fingerhandsker.jpg', caption: 'Fingerhandsker - med tre og fem fingre', audio: 'Lydfiler/Fingerhandsker.m4a' },
+         { image: 'Billeder/Fugle.jpg', caption: 'Fugle', audio: 'Lydfiler/Fugle.m4a' }
+      ]
+    },
+
+    //Psykiatrien i dag 1
+      {xPercent: 29.84,
+      yPercent: 50.90,
+      type: 'Skilte',
+      title: "Psykiatrien i dag",
+      section: "Normalitet",
+  
+      slides: [
+        { image: 'Billeder/Tredje.jpg', caption: 'Hver tredje af os', audio: 'Lydfiler/Tredje.m4a'},
+        { image: 'Billeder/Børn.jpg', caption: 'Børn og unge', audio: 'Lydfiler/Børn.m4a' },
+        { image: 'Billeder/Personer.jpg', caption: 'Personer over 19 år', audio: 'Lydfiler/Personer.m4a' },
+        { image: 'Billeder/Diagnose.jpg', caption: 'Hvordan stilles en diagnose?', audio: 'Lydfiler/Diagnose.m4a' },
+        { image: 'Billeder/Organiske.jpg', caption: '10 klassifikationer', audio: 'Lydfiler/Organiske.m4a' },
+        { image: 'Billeder/Principper.jpg', caption: 'Behandlingen sker efter tre principper', audio: 'Lydfiler/Principper.m4a' },
+        { image: 'Billeder/Behandlingen.jpg', caption: 'Behandlingen', audio: 'Lydfiler/Behandling.m4a' },
+        { image: 'Billeder/Sansepåvirkningen.jpg', caption: 'Sansepåvirkning', audio: 'Lydfiler/Sansepåvirkning.m4a'},
+        { image: 'Billeder/Medicin.jpg', caption: 'Medicin', audio: 'Lydfiler/Medicin.m4a' },
+        { image: 'Billeder/Psykoterapi.jpg', caption: 'Psykoterapi', audio: 'Lydfiler/Psykoterapi.m4a' },
+        { image: 'Billeder/Psykoedukation.jpg', caption: 'Psykoedukation', audio: 'Lydfiler/Psykoedukation.m4a' },
+        { image: 'Billeder/Elektrochok2.jpg', caption: 'Elektrochok', audio: 'Lydfiler/Elektrochok2.m4a' },
+        { image: 'Billeder/Ambulant.jpg', caption: 'Ambulant behandling på hospital', audio: 'Lydfiler/Ambulant.m4a' },
+        { image: 'Billeder/Indlæggelse.jpg', caption: 'Indlæggelse på hospital', audio: 'Lydfiler/Indlæggelse.m4a' },
+        { image: 'Billeder/Tvang.jpg', caption: 'Anvendelse af tvang i psykiatrien', audio: 'Lydfiler/Tvang.m4a' },
+      ]
+    },
+
+    //Psykiatrien i dag 2
+
+      {xPercent: 32.07,
+      yPercent: 47.19,
+      type: 'Skilte',
+      title: "Psykiatrien i dag",
+      section: "Normalitet",
+      slides: [
+        { image: 'Billeder/Svært.jpg', caption: 'Det kan være svært at forstå <br> og forklare psykisk sygdom', audio: 'Lydfiler/Svært.m4a'},
+        { image: 'Billeder/Tabuseret.jpg', caption: 'Psykisk sygdom er stadig et tabuiseret emne', audio: 'Lydfiler/Tabuiseret.m4a' },
+        { image: 'Billeder/1800.jpg', caption: '1800', audio: 'Lydfiler/1800.m4a' },
+        { image: 'Billeder/1808.jpg', caption: '1808', audio: 'Lydfiler/1808.m4a' },
+        { image: 'Billeder/1852.jpg', caption: '1852', audio: 'Lydfiler/1852.m4a' },
+        { image: 'Billeder/26.jpg', caption: 'Ovartaci 26. september 1894', audio: 'Lydfiler/26.m4a' },
+        { image: 'Billeder/1900.jpg', caption: '1900', audio: 'Lydfiler/1900.m4a' },
+        { image: 'Billeder/1930.jpg', caption: '1930', audio: 'Lydfiler/1930.m4a'},
+        { image: 'Billeder/1938.jpg', caption: '1938', audio: 'Lydfiler/1938.m4a' },
+        { image: 'Billeder/1950.jpg', caption: '1950', audio: 'Lydfiler/1950.m4a' },
+        { image: 'Billeder/1970.jpg', caption: '1970', audio: 'Lydfiler/1970.m4a' },
+        { image: 'Billeder/1976.jpg', caption: '1976', audio: 'Lydfiler/1976.m4a' },
+        { image: 'Billeder/1980.jpg', caption: '1980', audio: 'Lydfiler/1980.m4a' },
+        { image: 'Billeder/25.jpg', caption: '25', audio: 'Lydfiler/25.m4a' },
+        { image: 'Billeder/2000.jpg', caption: '2000', audio: 'Lydfiler/2000.m4a' },
+      ]
+    },
+
+//Touchskærm bord
+     {xPercent: 39.61,
+      yPercent: 84.15,
+      type: 'Bord',
+      title: "Kort",
+      section: "Normalitet",
+      slides: [
+        { image: 'Billeder/Dansk.jpg', caption: 'Dansk Engelsk', audio: 'Lydfiler/Dansk.m4a'},
+        { image: 'Billeder/Emner.jpg', caption: 'Emner', audio: 'Lydfiler/Emner.m4a' },
+        { image: 'Billeder/Stop.jpg', caption: 'Stop', audio: 'Lydfiler/Stop.m4a' },
+      ]
+    },
+
+  ];
+ 
+
+  function createIcon(size = 20) {
+    return L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+      iconSize: [size, size * 1.6],
+      iconAnchor: [size / 2, size * 1.6],
+      popupAnchor: [0, -size * 1.6]
+    });
+  }
+
+function createColoredIcon(color, size = 30) {
+  const iconUrls = {
+    yellow: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-yellow.png',
+    blue: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+    black: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-black.png',
+    green: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
+    red: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+    orange: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png',
+  };
+
+  const iconUrl = iconUrls[color] || iconUrls.red;
+
+  return L.icon({
+    iconUrl,
+    iconSize: [size, size * 1.6],
+    iconAnchor: [size / 2, size * 1.6],
+    popupAnchor: [0, -size * -1.0]
+  });
+}
+  
+
+  function addMarkers() {
+  const icon = createIcon(30);
+  locations.forEach(loc => {
+    const x = (loc.xPercent / 100) * imageWidth;
+    const y = (loc.yPercent / 100) * imageHeight;
+    const marker = L.marker([y, x], { icon }).addTo(map);
+    marker._markerType = 'red';
+    marker._section = loc.section;
+    const popupContent = `
+  <b>${loc.title}</b><br>
+  ${loc.image ? `<img src="${loc.image}" alt="${loc.title}" class="main-image">` : ''}
+  <img class="play-button" src="play.png" onclick="playAudio('${loc.audio}')">
+  <img class="pause-button" src="pause.png" onclick="pauseAudio()">
+`;
+
+    marker.bindPopup(popupContent);
+  
+    
+    marker.on('popupclose', () => {
+      if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+      }
+    });
+
+    markers.push(marker);
+  });
+}
+
+  document.getElementById('toggle-markers-btn').addEventListener('click', () => {
+    markersVisible = !markersVisible;
+
+    // Toggle marker visibility
+    markers.forEach(marker => {
+      if (markersVisible) {
+        if (!map.hasLayer(marker)) {
+          map.addLayer(marker);
+        }
+      } else {
+        if (map.hasLayer(marker)) {
+          map.removeLayer(marker);
+        }
+      }
+    });
+
+    // Change image based on state
+    const img = document.getElementById('marker-toggle-img');
+    img.src = markersInvisible ? 'marker-no.png' : 'marker.png';
+  });
+
+
+  // Add green markers as circleMarkers with filtering behavior
+greenMarkers.forEach(loc => {
+  const x = (loc.xPercent / 100) * imageWidth;
+  const y = (loc.yPercent / 100) * imageHeight;
+
+  const circle = L.circleMarker([y, x], {
+    radius: 12,
+    color: 'green',
+    fillColor: 'green',
+    fillOpacity: 1
+  });
+
+  circle._section = loc.title; // or loc.section, but you only have title for "Alle markeringer"
+
+  circle.on('click', () => {
+    showOnlySection(loc.title);
+  });
+
+  circle.addTo(map);
+  markers.push(circle);
+});
+
+
+  function addBlackMarkers() {
+  const icon = createColoredIcon('black');
+  blackMarkers.forEach(loc => {
+    const x = (loc.xPercent / 100) * imageWidth;
+    const y = (loc.yPercent / 100) * imageHeight;
+    const marker = L.marker([y, x], { icon }).addTo(map);
+    marker._section = loc.section;
+
+    // Smaller, minimal popup content with a specific class
+    const popupContent = `
+      <div class="popup-container black-popup">
+        <div class="popup-caption">
+          <b>${loc.title}</b><br>
+          ${loc.image ? `<img src="${loc.image}" alt="${loc.title}" class="main-image">` : ''}
+          <img class="icon-button" src="play.png" onclick="playAudio('${loc.audio}')">
+        </div>
+      </div>
+    `;
+
+    marker.bindPopup(popupContent, {
+  className: 'black-popup-wrapper'
+});
+    markers.push(marker);
+  });
+}
+
+
+function addGreenMarkers() {
+  const icon = createColoredIcon('green');
+  // Create green circle buttons as persistent navigation controls
+  greenMarkers.forEach(g => {
+  const lat = g.yPercent / 100 * imageHeight;
+  const lng = g.xPercent / 100 * imageWidth;
+  const greenCircle = L.circleMarker([lat, lng], {
+    radius: 15,
+    color: '#2ecc71',
+    fillColor: '#2ecc71',
+    fillOpacity: 1,
+    weight: 2
+  }).addTo(map);
+
+  greenCircle.bindTooltip(g.title, { permanent: false, direction: 'top' });
+
+  greenCircle.on('click', () => {
+    showOnlySection(g.section);
+  });
+});
+}
+
+ function getSlideHTML(markerData, slide, index, markerId) {
+  return `
+    <div style="text-align:center;">
+      <b>${markerData.title}</b><br>
+      ${slide.image ? `<img src="${slide.image}" alt="${markerData.title}" class="main-image fade-in"><br>` : ''}
+      <em>${slide.caption || ""}</em><br><br>
+      <img class="play-button" src="play.png" onclick="playAudio('${slide.audio}')">
+      <img class="pause-button" src="pause.png" onclick="pauseAudio()"><br><br>
+      <button onclick="event.preventDefault(); changeSlide(${index - 1}, '${markerId}')">⬅️</button>
+      <button onclick="event.preventDefault(); changeSlide(${index + 1}, '${markerId}')">➡️</button> 
+    </div>
+  `;
+}
+
+
+
+ function addSlideshowMarkers() {
+  slideshowMarkers.forEach(markerData => {
+    const x = (markerData.xPercent / 100) * imageWidth;
+    const y = (markerData.yPercent / 100) * imageHeight;
+
+    let color;
+    if (markerData.type === 'Skilte' || markerData.type === "Bord") {
+      color = 'orange';
+    } else if (markerData.type === 'touchscreen' || markerData.type === 'Small Windows') {
+      color = 'blue';
+    } else {
+      color = 'yellow';
+    }
+
+    const icon = createColoredIcon(color);
+
+    const marker = L.marker([y, x], { icon }).addTo(map);
+    marker._section = markerData.section;
+    marker._slideIndex = 0;
+    marker._slides = markerData.slides;
+
+    marker._updatePopup = () => {
+      const currentSlide = marker._slides[marker._slideIndex];
+      const img = new Image();
+      img.src = currentSlide.image;
+      img.onload = () => {
+        const popupContent = getSlideHTML(markerData, currentSlide, marker._slideIndex, marker._leaflet_id);
+        marker.setPopupContent(popupContent).openPopup();
+      };
+    };
+
+    marker.bindPopup("", {
+      autoPan: true,
+      autoPanPadding: L.point(80, 80),
+      offset: L.point(0, -60)
+    });
+
+    marker.on('popupopen', () => {
+      marker._updatePopup();
+    });
+
+       marker.on('popupclose', () => {
+      stopAudio();
+    });
+
+    markers.push(marker);
+  });
+}
+
+
+
+  window.changeSlide = function(newIndex, markerId) {
+    stopAudio ()
+    const m = map._layers[markerId];
+    if (!m || !m._slides) return;
+    const slides = m._slides;
+    m._slideIndex = (newIndex + slides.length) % slides.length;
+    setTimeout(() => {
+      m._updatePopup();
+    }, 0);
+  };
+
+/*
+  map.on('click', function(e) {
+    const y = e.latlng.lat;
+    const x = e.latlng.lng;
+    const xPercent = ((x / imageWidth) * 100).toFixed(2);
+    const yPercent = ((y / imageHeight) * 100).toFixed(2);
+    document.getElementById('coord-box').innerText = `X: ${xPercent}%, Y: ${yPercent}%`;
+    console.log(`X: ${xPercent}%, Y: ${yPercent}%`);
+  });
+*/
+    function fitFullMap() {
+    map.invalidateSize();
+    map.fitBounds(bounds, { animate: false });
+  }
+
+  fitFullMap();
+  window.addEventListener('resize', fitFullMap);
+
+  map.on('zoomend', function() {
+    const zoom = map.getZoom();
+    const size = 30 + zoom * 3;
+    const newIcon = createIcon(size);
+    markers.forEach(marker => {
+      if (marker._markerType === 'red') {
+    marker.setIcon(createIcon(size));
+  }
+
+    });
+  });
+
+  
+
+  addMarkers();
+  addBlackMarkers();
+  addSlideshowMarkers();
+  addGreenMarkers(); 
+
+
+
+let markersInvisible = false;
+
+const toggleBtn = document.getElementById('toggle-markers-btn');
+const toggleImg = document.getElementById('marker-toggle-img');
+
+toggleBtn.addEventListener('click', () => {
+  markersInvisible = !markersInvisible;
+
+  markers.forEach(marker => {
+    if (markersInvisible) {
+      map.removeLayer(marker);  // Remove markers when invisible
+    } else {
+      map.addLayer(marker);     // Add markers when visible
+    }
+  });
+
+  // Update image source based on visibility
+  toggleImg.src = markersInvisible ? 'marker.png' : 'marker-no.png';
+});
+
+
+
+</script>
+
+</body>
+</html>
